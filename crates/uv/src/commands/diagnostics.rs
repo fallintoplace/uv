@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock};
 
 use owo_colors::OwoColorize;
 use rustc_hash::FxHashMap;
+use thiserror::Error;
 use version_ranges::Ranges;
 
 use uv_distribution_types::{
@@ -12,6 +13,7 @@ use uv_errors::{Hint, Hints};
 use uv_normalize::PackageName;
 use uv_pep440::Version;
 use uv_resolver::SentinelRange;
+use uv_warnings::write_error_chain;
 
 use crate::commands::pip;
 use crate::commands::pip::install::ExternallyManagedError;
@@ -22,6 +24,7 @@ use crate::commands::project::run::RecursionLimitError;
 use crate::commands::project::version::MissingProjectVersionError;
 use crate::commands::tool::common::NoExecutablesError;
 use crate::commands::tool::run::ToolRunScriptError;
+use crate::printer::Stderr;
 
 static SUGGESTIONS: LazyLock<FxHashMap<PackageName, PackageName>> = LazyLock::new(|| {
     let suggestions: Vec<(String, String)> =
@@ -119,9 +122,14 @@ impl OperationDiagnostic {
             }
             pip::operations::Error::Requirements(err) => {
                 if let Some(context) = self.context {
-                    let err = miette::Report::msg(format!("{err}"))
+                    let err = anyhow::Error::from(err)
                         .context(format!("Failed to resolve {context} requirement"));
-                    anstream::eprint!("{err:?}");
+                    let _ = write_error_chain(
+                        err.as_ref(),
+                        Stderr::Enabled,
+                        "error",
+                        owo_colors::AnsiColors::Red,
+                    );
                     None
                 } else {
                     Some(pip::operations::Error::Requirements(err))
@@ -152,6 +160,12 @@ impl OperationDiagnostic {
     }
 }
 
+/// Display an error and its hints.
+pub(crate) fn show_error(err: &dyn std::error::Error, hints: Hints<'_>) {
+    let _ = write_error_chain(err, Stderr::Enabled, "error", owo_colors::AnsiColors::Red);
+    anstream::eprint!("{hints}");
+}
+
 /// Render a distribution failure (read, download or build) with a help message.
 // https://github.com/rust-lang/rust/issues/147648
 #[allow(unused_assignments)]
@@ -161,9 +175,8 @@ pub(crate) fn dist_error(
     chain: &DerivationChain,
     cause: Arc<uv_distribution::Error>,
 ) {
-    #[derive(Debug, miette::Diagnostic, thiserror::Error)]
+    #[derive(Debug, Error)]
     #[error("{kind} `{dist}`")]
-    #[diagnostic()]
     struct Diagnostic {
         kind: DistErrorKind,
         dist: Box<Dist>,
@@ -172,9 +185,8 @@ pub(crate) fn dist_error(
     }
 
     let hints = dist_hints(dist.name(), dist.version(), chain, cause.hints());
-    let report = miette::Report::new(Diagnostic { kind, dist, cause });
-    anstream::eprint!("{report:?}");
-    anstream::eprint!("{hints}");
+    let err = Diagnostic { kind, dist, cause };
+    show_error(&err, hints);
 }
 
 /// Render a requested distribution failure (read, download or build) with a help message.
@@ -186,9 +198,8 @@ fn requested_dist_error(
     chain: &DerivationChain,
     cause: Arc<uv_distribution::Error>,
 ) {
-    #[derive(Debug, miette::Diagnostic, thiserror::Error)]
+    #[derive(Debug, Error)]
     #[error("{kind} `{dist}`")]
-    #[diagnostic()]
     struct Diagnostic {
         kind: DistErrorKind,
         dist: Box<RequestedDist>,
@@ -197,9 +208,8 @@ fn requested_dist_error(
     }
 
     let hints = dist_hints(dist.name(), dist.version(), chain, cause.hints());
-    let report = miette::Report::new(Diagnostic { kind, dist, cause });
-    anstream::eprint!("{report:?}");
-    anstream::eprint!("{hints}");
+    let err = Diagnostic { kind, dist, cause };
+    show_error(&err, hints);
 }
 
 /// Render an error in fetching a package's dependencies.
@@ -211,9 +221,8 @@ fn dependencies_error(
     version: &Version,
     chain: &DerivationChain,
 ) {
-    #[derive(Debug, miette::Diagnostic, thiserror::Error)]
-    #[error("Failed to resolve dependencies for `{}` ({})", name.cyan(), format!("v{version}").cyan())]
-    #[diagnostic()]
+    #[derive(Debug, Error)]
+    #[error("Failed to resolve dependencies for `{name}` (v{version})")]
     struct Diagnostic {
         name: PackageName,
         version: Version,
@@ -222,13 +231,12 @@ fn dependencies_error(
     }
 
     let hints = dist_hints(name, Some(version), chain, error.hints());
-    let report = miette::Report::new(Diagnostic {
+    let err = Diagnostic {
         name: name.clone(),
         version: version.clone(),
         cause: error,
-    });
-    anstream::eprint!("{report:?}");
-    anstream::eprint!("{hints}");
+    };
+    show_error(&err, hints);
 }
 
 /// Render a [`uv_resolver::NoSolutionError`].
@@ -238,47 +246,19 @@ pub(crate) fn no_solution(err: &uv_resolver::NoSolutionError, context: Option<&'
     } else {
         err.header()
     };
-    let report = miette::Report::msg(err.report().to_string()).context(header);
-    anstream::eprint!("{report:?}");
-    let hints = err.hints();
-    anstream::eprint!("{hints}");
+    let report = anyhow::Error::msg(err.report().to_string()).context(header.to_string());
+    show_error(report.as_ref(), err.hints());
 }
 
 /// Render a TLS error with a hint to enable native TLS.
 // https://github.com/rust-lang/rust/issues/147648
 #[allow(unused_assignments)]
 fn system_certs_hint(err: uv_client::Error) {
-    #[derive(Debug, miette::Diagnostic)]
-    #[diagnostic()]
-    struct Error {
-        /// The underlying error.
-        err: uv_client::Error,
-
-        /// The help message to display.
-        #[help]
-        help: String,
-    }
-
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}", self.err)
-        }
-    }
-
-    impl std::error::Error for Error {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            self.err.source()
-        }
-    }
-
-    let report = miette::Report::new(Error {
-        err,
-        help: format!(
-            "Consider enabling use of system TLS certificates with the `{}` command-line flag",
-            "--system-certs".green()
-        ),
-    });
-    anstream::eprint!("{report:?}");
+    let hint = format!(
+        "Consider enabling use of system TLS certificates with the `{}` command-line flag",
+        "--system-certs".green()
+    );
+    show_error(&err, Hints::from(hint));
 }
 
 /// Walk an error chain and collect hint strings from all known error types.
