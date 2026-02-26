@@ -328,3 +328,57 @@ fn clean_handles_verbatim_paths() -> Result<()> {
 
     Ok(())
 }
+
+/// `cache clean` should remove centralized environments.
+#[test]
+fn clean_removes_centralized_env() -> Result<()> {
+    let context = uv_test::test_context_with_versions!(&["3.12"]).with_filtered_counts();
+
+    let pyproject_toml = context.temp_dir.child("pyproject.toml");
+    pyproject_toml.write_str(
+        r#"
+        [project]
+        name = "project"
+        version = "0.1.0"
+        requires-python = ">=3.12"
+        dependencies = ["iniconfig"]
+        "#,
+    )?;
+
+    // Create a centralized environment.
+    context
+        .sync()
+        .arg("--preview-features")
+        .arg("centralized-envs")
+        .assert()
+        .success();
+
+    // `.venv` should be a symlink (Unix) or junction (Windows) pointing into the cache.
+    let venv_path = context.temp_dir.child(".venv").path().to_path_buf();
+    let link_target = fs_err::read_link(&venv_path)?;
+    assert!(link_target.exists(), "Centralized environment should exist");
+
+    // Clean the cache.
+    uv_snapshot!(context.filters(), context.clean().arg("--verbose"), @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    DEBUG Found workspace root: `[TEMP_DIR]/`
+    DEBUG Adding root workspace member: `[TEMP_DIR]/`
+    DEBUG Skipping `pyproject.toml` in `[TEMP_DIR]/` (no `[tool]` section)
+    DEBUG Found system configuration in: `/etc/uv/uv.toml`
+    DEBUG Searching for user configuration in: `[UV_USER_CONFIG_DIR]/uv.toml`
+    DEBUG uv [VERSION] ([COMMIT] DATE)
+    Clearing cache at: [CACHE_DIR]/
+    Removed [N] files ([SIZE])
+    ");
+
+    assert!(
+        !link_target.exists(),
+        "Centralized environment should have been removed by cache clean"
+    );
+
+    Ok(())
+}

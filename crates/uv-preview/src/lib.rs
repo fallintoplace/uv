@@ -257,6 +257,7 @@ pub enum PreviewFeature {
     ProjectDirectoryMustExist = 1 << 27,
     IndexExcludeNewer = 1 << 28,
     AzureEndpoint = 1 << 29,
+    CentralizedEnvs = 1 << 30,
 }
 
 impl PreviewFeature {
@@ -293,6 +294,7 @@ impl PreviewFeature {
             Self::ProjectDirectoryMustExist => "project-directory-must-exist",
             Self::IndexExcludeNewer => "index-exclude-newer",
             Self::AzureEndpoint => "azure-endpoint",
+            Self::CentralizedEnvs => "centralized-envs",
         }
     }
 }
@@ -342,6 +344,7 @@ impl FromStr for PreviewFeature {
             "project-directory-must-exist" => Self::ProjectDirectoryMustExist,
             "index-exclude-newer" => Self::IndexExcludeNewer,
             "azure-endpoint" => Self::AzureEndpoint,
+            "centralized-envs" => Self::CentralizedEnvs,
             _ => return Err(PreviewFeatureParseError),
         })
     }
@@ -596,6 +599,7 @@ mod tests {
             "index-exclude-newer"
         );
         assert_eq!(PreviewFeature::AzureEndpoint.as_str(), "azure-endpoint");
+        assert_eq!(PreviewFeature::CentralizedEnvs.as_str(), "centralized-envs");
     }
 
     #[test]
