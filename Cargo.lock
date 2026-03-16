@@ -6236,6 +6236,7 @@ dependencies = [
  "uv-configuration",
  "uv-distribution-filename",
  "uv-distribution-types",
+ "uv-errors",
  "uv-extract",
  "uv-installer",
  "uv-macros",
@@ -6411,7 +6412,15 @@ dependencies = [
 name = "uv-errors"
 version = "0.0.48"
 dependencies = [
+ "anstream",
+ "anyhow",
+ "indoc",
+ "insta",
  "owo-colors",
+ "terminal_size",
+ "textwrap",
+ "thiserror",
+ "uv-static",
 ]
 
 [[package]]
@@ -6833,6 +6842,7 @@ dependencies = [
  "glob",
  "insta",
  "itertools 0.14.0",
+ "owo-colors",
  "reqwest",
  "rustc-hash",
  "serde",
@@ -6848,6 +6858,7 @@ dependencies = [
  "uv-configuration",
  "uv-distribution-filename",
  "uv-distribution-types",
+ "uv-errors",
  "uv-extract",
  "uv-fs",
  "uv-metadata",
@@ -7371,9 +7382,6 @@ name = "uv-warnings"
 version = "0.0.48"
 dependencies = [
  "anstream",
- "anyhow",
- "indoc",
- "insta",
  "owo-colors",
  "rustc-hash",
 ]

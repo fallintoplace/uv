@@ -4,8 +4,7 @@ use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Instant;
 
-use anstream::eprintln;
-use owo_colors::OwoColorize;
+use owo_colors::AnsiColors;
 use tracing::{debug, trace};
 use tracing_durations_export::DurationsLayerBuilder;
 use tracing_durations_export::plot::PlotConfig;
@@ -69,10 +68,18 @@ async fn main() -> ExitCode {
     debug!("Took {}ms", start.elapsed().as_millis());
     if let Err(err) = result {
         trace!("Error trace: {err:?}");
-        eprintln!("{}", "uv-dev failed".red().bold());
-        for err in err.chain() {
-            eprintln!("  {}: {}", "Caused by".red().bold(), err.to_string().trim());
-        }
+        let err = err.context("uv-dev failed");
+        let mut error_chain = String::new();
+        uv_errors::write_error_chain(
+            err.as_ref(),
+            &mut error_chain,
+            "error",
+            AnsiColors::Red,
+            uv_errors::Hints::none(),
+            None,
+        )
+        .expect("writing to a string should not fail");
+        anstream::eprint!("{error_chain}");
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
