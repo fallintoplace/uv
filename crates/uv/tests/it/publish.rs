@@ -549,6 +549,7 @@ async fn gitlab_trusted_publishing_pypi_id_token() {
         .await;
 
     uv_snapshot!(context.filters(), context.publish()
+        .arg("--no-attestations")
         .arg("--trusted-publishing")
         .arg("always")
         .arg("--publish-url")
@@ -603,6 +604,7 @@ async fn gitlab_trusted_publishing_testpypi_id_token() {
         .await;
 
     uv_snapshot!(context.filters(), context.publish()
+        .arg("--no-attestations")
         .arg("--trusted-publishing")
         .arg("always")
         .arg("--publish-url")

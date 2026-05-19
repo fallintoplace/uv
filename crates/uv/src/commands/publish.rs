@@ -101,7 +101,9 @@ pub(crate) async fn publish(
         (publish_url, check_url)
     };
 
-    let groups = group_files_for_publishing(paths, no_attestations)?;
+    let reporter = Arc::new(PublishReporter::single(printer));
+
+    let groups = group_files_for_publishing(paths, no_attestations, reporter.clone()).await?;
     match groups.len() {
         0 => bail!("No files found to publish"),
         1 => {
@@ -217,8 +219,6 @@ pub(crate) async fn publish(
             );
         }
 
-        let reporter = Arc::new(PublishReporter::single(printer));
-
         if let Some(check_url_client) = &check_url_client {
             match uv_publish::check_url(
                 check_url_client,
@@ -260,6 +260,7 @@ pub(crate) async fn publish(
                 format!("({bytes:.1}{unit})").dimmed()
             )?;
         } else {
+            // TODO: We now perform the hashing above, so this is in the wrong place.
             writeln!(
                 printer.stderr(),
                 "{} {} {}",
@@ -270,21 +271,20 @@ pub(crate) async fn publish(
         }
 
         // Collect the metadata for the file.
-        let form_metadata =
-            match FormMetadata::read_from_file(&group.file, &group.filename, reporter.clone())
-                .await
-                .map_err(|err| PublishError::PublishPrepare(group.file.clone(), Box::new(err)))
-            {
-                Ok(metadata) => metadata,
-                Err(err) => {
-                    if dry_run {
-                        write_error_chain(&err, printer.stderr(), "error", AnsiColors::Red)?;
-                        error_count += 1;
-                        continue;
-                    }
-                    return Err(err.into());
+        let form_metadata = match FormMetadata::read_from_file(&group)
+            .await
+            .map_err(|err| PublishError::PublishPrepare(group.file.clone(), Box::new(err)))
+        {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                if dry_run {
+                    write_error_chain(&err, printer.stderr(), "error", AnsiColors::Red)?;
+                    error_count += 1;
+                    continue;
                 }
-            };
+                return Err(err.into());
+            }
+        };
 
         writeln!(
             printer.stderr(),
