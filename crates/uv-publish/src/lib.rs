@@ -29,7 +29,7 @@ use uv_client::{
     BaseClient, DEFAULT_MAX_REDIRECTS, MetadataFormat, OwnedArchive, RegistryClientBuilder,
     RequestBuilder, RetryParsingError, RetryState,
 };
-use uv_configuration::{KeyringProviderType, TrustedPublishing};
+use uv_configuration::{Attest, KeyringProviderType, TrustedPublishing};
 use uv_distribution_filename::{DistFilename, SourceDistExtension, SourceDistFilename};
 use uv_distribution_types::{IndexCapabilities, IndexUrl};
 use uv_extract::hash::{HashReader, Hasher};
@@ -313,7 +313,7 @@ fn unroll_paths(paths: Vec<String>) -> Result<Vec<PathBuf>, PublishPrepareError>
 /// Given a flat list of input files, merge them into a list of [`UploadDistribution`]s.
 async fn group_files(
     files: Vec<PathBuf>,
-    no_attestations: bool,
+    attest: Attest,
     reporter: Arc<impl Reporter>,
 ) -> Result<Vec<UploadDistribution>, PublishPrepareError> {
     let mut groups = FxHashMap::default();
@@ -391,7 +391,7 @@ async fn group_files(
         }
     }
 
-    if no_attestations {
+    if matches!(attest, Attest::Never) {
         debug!("Not merging attestations with distributions per user request");
     } else {
         // Merge attestations into their respective upload groups.
@@ -415,16 +415,14 @@ async fn group_files(
 /// <https://github.com/pypi/warehouse/blob/50a58f3081e693a3772c0283050a275e350004bf/warehouse/forklift/legacy.py#L1133-L1155>
 pub async fn group_files_for_publishing(
     paths: Vec<String>,
-    no_attestations: bool,
+    attest: Attest,
     reporter: Arc<impl Reporter>,
 ) -> Result<Vec<UploadDistribution>, PublishPrepareError> {
     // First, collect any distributions (and their attestations) that match the input globs.
-    let mut groups = group_files(unroll_paths(paths)?, no_attestations, reporter.clone()).await?;
+    let mut groups = group_files(unroll_paths(paths)?, attest, reporter.clone()).await?;
 
-    // Then, fill in any missing attestations by attempting to generate them.
-    if !no_attestations {
-        generate_attestations(&mut groups).await?;
-    }
+    // Then, fill in any missing attestations by attempting to generate them, if enabled.
+    generate_attestations(&mut groups, attest).await?;
 
     Ok(groups)
 }
@@ -432,7 +430,13 @@ pub async fn group_files_for_publishing(
 /// Generate PEP 740 attestations for any distributions that are missing them.
 async fn generate_attestations(
     groups: &mut [UploadDistribution],
+    attest: Attest,
 ) -> Result<(), PublishPrepareError> {
+    if matches!(attest, Attest::Never) {
+        debug!("Not generating attestations per user request");
+        return Ok(());
+    }
+
     // Creating a signer is somewhat expensive, so we perform a cheap
     // pre-scan of the upload groups to see if we actually need to perform
     // signing.
@@ -445,10 +449,43 @@ async fn generate_attestations(
 
     // TODO: Either plumb in some kind of staging flag here, or remove this knob entirely.
     let signer = Signer::new(false);
-    let Some(id_token) = sigstore_oidc::IdentityToken::detect_ambient().await? else {
-        debug!("No ambient identity token found for signing, skipping attestation generation");
-        return Ok(());
+
+    let id_token = match (attest, sigstore_oidc::IdentityToken::detect_ambient().await) {
+        // Happy path: we want to/must attest and we have an ambient ID token,
+        // so we can proceed with signing.
+        (Attest::Automatic | Attest::Always, Ok(Some(id_token))) => id_token,
+        // We want to attest but the environment doesn't support it; no error
+        (Attest::Automatic, Ok(None)) => {
+            debug!("No ambient identity token found for signing, skipping attestation generation");
+            return Ok(());
+        }
+        // We want to attest and the environment *looks* like it should support it,
+        // but we failed to obtain a token from it; warning but no error.
+        (Attest::Automatic, Err(_)) => {
+            warn_user!(
+                "Failed to obtain ambient identity token for signing, skipping attestation generation"
+            );
+            return Ok(());
+        }
+        // We must attest but the environment doesn't support it; error.
+        (Attest::Always, Ok(None)) => {
+            return Err(PublishPrepareError::AmbientIdError(
+                sigstore_oidc::Error::Token("no ambient identity token found".to_string()),
+            ));
+        }
+        // We must attest and the environment *looks* like it should support it,
+        // but we failed to obtain a token from it; error.
+        (Attest::Always, Err(e)) => {
+            return Err(PublishPrepareError::AmbientIdError(e));
+        }
+        // Guarded above.
+        (Attest::Never, _) => unreachable!(),
     };
+
+    // else {
+    //     debug!("No ambient identity token found for signing, skipping attestation generation");
+    //     return Ok(());
+    // };
 
     for group in groups {
         // If the group already attestations, we skip it.
@@ -1601,6 +1638,7 @@ mod tests {
     use tempfile::TempDir;
     use uv_auth::Credentials;
     use uv_client::{AuthIntegration, BaseClientBuilder, RedirectPolicy};
+    use uv_configuration::Attest;
     use uv_distribution_filename::DistFilename;
     use uv_pypi_types::{HashAlgorithm, HashDigest};
     use uv_redacted::DisplaySafeUrl;
@@ -1731,10 +1769,13 @@ mod tests {
         {
             let dists = [temp_path(valid_sdist), temp_path(valid_wheel)];
 
-            let mut groups =
-                group_files(dists.into_iter().collect(), false, Arc::new(DummyReporter))
-                    .await
-                    .unwrap();
+            let mut groups = group_files(
+                dists.into_iter().collect(),
+                Attest::Never,
+                Arc::new(DummyReporter),
+            )
+            .await
+            .unwrap();
             groups.sort_by_key(|group| group.raw_filename.clone());
             normalize_temp_paths(&mut groups, temp_dir.path());
 
@@ -1816,7 +1857,7 @@ mod tests {
 
             shuffle(&mut dists);
 
-            let mut groups = group_files(dists, false, Arc::new(DummyReporter))
+            let mut groups = group_files(dists, Attest::Never, Arc::new(DummyReporter))
                 .await
                 .unwrap();
             groups.sort_by_key(|group| group.raw_filename.clone());
@@ -1909,7 +1950,7 @@ mod tests {
 
             shuffle(&mut dists);
 
-            let mut groups = group_files(dists, true, Arc::new(DummyReporter))
+            let mut groups = group_files(dists, Attest::Never, Arc::new(DummyReporter))
                 .await
                 .unwrap();
             groups.sort_by_key(|group| group.raw_filename.clone());
@@ -1991,10 +2032,13 @@ mod tests {
                 temp_path(invalid_attestation),
             ];
 
-            let mut groups =
-                group_files(dists.into_iter().collect(), false, Arc::new(DummyReporter))
-                    .await
-                    .unwrap();
+            let mut groups = group_files(
+                dists.into_iter().collect(),
+                Attest::Never,
+                Arc::new(DummyReporter),
+            )
+            .await
+            .unwrap();
             normalize_temp_paths(&mut groups, temp_dir.path());
             assert_debug_snapshot!(groups, @r#"
             [

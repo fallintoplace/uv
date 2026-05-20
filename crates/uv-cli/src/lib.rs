@@ -15,8 +15,9 @@ use uv_audit::VulnerabilityServiceFormat;
 use uv_auth::Service;
 use uv_cache::CacheArgs;
 use uv_configuration::{
-    ExportFormat, IndexStrategy, KeyringProviderType, PackageNameSpecifier, PipCompileFormat,
-    ProjectBuildBackend, TargetTriple, TrustedHost, TrustedPublishing, VersionControlSystem,
+    Attest, ExportFormat, IndexStrategy, KeyringProviderType, PackageNameSpecifier,
+    PipCompileFormat, ProjectBuildBackend, TargetTriple, TrustedHost, TrustedPublishing,
+    VersionControlSystem,
 };
 use uv_distribution_types::{
     ConfigSettingEntry, ConfigSettingPackageEntry, Index, IndexUrl, Origin, PipExtraIndex,
@@ -7974,11 +7975,18 @@ pub struct PublishArgs {
     #[arg(long)]
     pub dry_run: bool,
 
+    /// Configure attestations.
+    ///
+    /// By default, uv will upload any attestations found alongside distribution files,
+    /// and will additionally produce any missing 'publish' attestations if the environment
+    /// supports it.
+    #[arg(long, value_enum, default_value_t)]
+    pub attest: Attest,
+
     /// Do not produce or upload attestations for the published files.
     ///
-    /// By default, uv attempts to produce and upload matching PEP 740 attestations with each distribution
-    /// that is published.
-    #[arg(long, env = EnvVars::UV_PUBLISH_NO_ATTESTATIONS)]
+    /// This is a deprecated alias for `--attest=never`.
+    #[arg(long, env = EnvVars::UV_PUBLISH_NO_ATTESTATIONS, hide = true, conflicts_with = "attest")]
     pub no_attestations: bool,
 
     /// Use direct upload to the registry.

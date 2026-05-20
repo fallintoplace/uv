@@ -11,7 +11,7 @@ use uv_cache::Cache;
 use uv_client::{
     AuthIntegration, BaseClient, BaseClientBuilder, RedirectPolicy, RegistryClientBuilder,
 };
-use uv_configuration::{KeyringProviderType, TrustedPublishing};
+use uv_configuration::{Attest, KeyringProviderType, TrustedPublishing};
 use uv_distribution_types::{IndexCapabilities, IndexLocations, IndexUrl};
 use uv_preview::{Preview, PreviewFeature};
 use uv_publish::{
@@ -39,7 +39,7 @@ pub(crate) async fn publish(
     index: Option<String>,
     index_locations: IndexLocations,
     dry_run: bool,
-    no_attestations: bool,
+    attest: Attest,
     direct: bool,
     preview: Preview,
     cache: &Cache,
@@ -56,6 +56,18 @@ pub(crate) async fn publish(
             PreviewFeature::DirectPublish
         );
     }
+
+    let attest = match (trusted_publishing, attest) {
+        (TrustedPublishing::Never, Attest::Always | Attest::Automatic) => {
+            warn_user_once!(
+                "Trusted publishing is disabled, meaning that attestations cannot be uploaded \
+                even if they are present. Remove `--trusted-publishing never` to enable attestations, \
+                or pass `--attest never` to explicitly disable attestations.",
+            );
+            Attest::Never
+        }
+        _ => attest,
+    };
 
     let token_store = PyxTokenStore::from_settings()?;
 
@@ -103,7 +115,7 @@ pub(crate) async fn publish(
 
     let reporter = Arc::new(PublishReporter::single(printer));
 
-    let groups = group_files_for_publishing(paths, no_attestations, reporter.clone()).await?;
+    let groups = group_files_for_publishing(paths, attest, reporter.clone()).await?;
     match groups.len() {
         0 => bail!("No files found to publish"),
         1 => {
