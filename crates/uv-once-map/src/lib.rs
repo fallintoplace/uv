@@ -146,6 +146,15 @@ impl<K: Eq + Hash + Clone, V: Clone, H: BuildHasher + Clone> OnceMap<K, V, H> {
         }
     }
 
+    /// Return the results of previous jobs, if any.
+    // TODO(konsti): Don't let this deadlock!
+    pub fn values(&self) -> impl Iterator<Item = V> + '_ {
+        self.items.iter().filter_map(|entry| match entry.value() {
+            Value::Filled(value) => Some(value.clone()),
+            Value::Waiting(_) => None,
+        })
+    }
+
     /// Remove the result of a previous job, if any.
     pub fn remove<Q: ?Sized + Hash + Eq>(&self, key: &Q) -> Option<V>
     where
