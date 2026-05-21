@@ -49,15 +49,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "android_system_properties"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -421,9 +412,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.16.2"
+version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a054912289d18629dc78375ba2c3726a3afe3ff71b4edba9dedfca0e3446d1fc"
+checksum = "5ec2f1fc3ec205783a5da9a7e6c1509cc69dedf09a1949e412c1e18469326d00"
 dependencies = [
  "aws-lc-sys",
  "untrusted 0.7.1",
@@ -432,9 +423,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.39.0"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fa7e52a4c5c547c741610a2c6f123f3881e409b714cd27e6798ef020c514f0a"
+checksum = "1a2f9779ce85b93ab6170dd940ad0169b5766ff848247aff13bb788b832fe3f4"
 dependencies = [
  "cc",
  "cmake",
@@ -742,20 +733,6 @@ checksum = "f1f927b07c74ba84c7e5fe4db2baeb3e996ab2688992e39ac68ce3220a677c7e"
 dependencies = [
  "base64",
  "encoding_rs",
-]
-
-[[package]]
-name = "chrono"
-version = "0.4.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
-dependencies = [
- "iana-time-zone",
- "js-sys",
- "num-traits",
- "serde",
- "wasm-bindgen",
- "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -2176,30 +2153,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "windows-registry",
-]
-
-[[package]]
-name = "iana-time-zone"
-version = "0.1.65"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470"
-dependencies = [
- "android_system_properties",
- "core-foundation-sys",
- "iana-time-zone-haiku",
- "js-sys",
- "log",
- "wasm-bindgen",
- "windows-core",
-]
-
-[[package]]
-name = "iana-time-zone-haiku"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -4253,7 +4206,7 @@ dependencies = [
  "aws-lc-rs",
  "once_cell",
  "rustls-pki-types",
- "rustls-webpki 0.103.13",
+ "rustls-webpki",
  "subtle",
  "zeroize",
 ]
@@ -4294,7 +4247,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs",
  "rustls-platform-verifier-android",
- "rustls-webpki 0.103.13",
+ "rustls-webpki",
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
@@ -4306,18 +4259,6 @@ name = "rustls-platform-verifier-android"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
-
-[[package]]
-name = "rustls-webpki"
-version = "0.102.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
-dependencies = [
- "aws-lc-rs",
- "ring",
- "rustls-pki-types",
- "untrusted 0.9.0",
-]
 
 [[package]]
 name = "rustls-webpki"
@@ -4712,9 +4653,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-bundle"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bb2255028e90ba8e7abe7cc49fb04e6f824a8f7a061fc6922f67a48e84ab052"
+checksum = "9a86d28a25d9e6107e02ca60fc60dfeb7cdc2b98251950d6fcd055f2afa31acb"
 dependencies = [
  "base64",
  "hex",
@@ -4730,9 +4671,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-crypto"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac7172898e15789d69d12469bb3d33397aab0771fb4f8d32cd56972e97808bf3"
+checksum = "9cdc66f1480e176533425cc880bc5f8a8e0d88ae1fe2701e98de4fb68984b71c"
 dependencies = [
  "aws-lc-rs",
  "base64",
@@ -4752,9 +4693,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-fulcio"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3dd9d2e96569798c7a6959a8712261d0c8048fe1a86604019eb19618b48cf00"
+checksum = "78654d1d908925ff3c0634a8bc5199587b6d37ec7b777fedda86687924f088e0"
 dependencies = [
  "base64",
  "reqwest",
@@ -4769,9 +4710,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-merkle"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e86ee272adfcfa21a2248b2fbf05a79b6e39a1fb699ef70c578c814af16e4db"
+checksum = "a4dbea5d8d5f293dfc2ed6abd06dc26a5ef017af126e53e3e36a6b2f7b7dac8c"
 dependencies = [
  "base64",
  "hex",
@@ -4782,9 +4723,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-oidc"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "587e216497808f23de607ea7966b3ca312a48afa3babaf54fdef9b2518106070"
+checksum = "6e2146f7779690f14313299bc3f2ec87af26cbb96c44a77a4a61dec4422b0007"
 dependencies = [
  "ambient-id",
  "base64",
@@ -4802,9 +4743,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-rekor"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2448f8a13b91c615c23badca4d7e51b0376539b8723a2a2d43d27c016f9cce08"
+checksum = "fbe0bf948de89bed9b3b5c9d62940264a4da60db3518006b952b107d0e71926f"
 dependencies = [
  "base64",
  "hex",
@@ -4820,9 +4761,9 @@ dependencies = [
 
 [[package]]
 name = "sigstore-sign"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6fea3ac015830222b4083a9905681030430e079683aaf74e1ec6e75ab3b4b9e"
+checksum = "6d21f5037998997f2e79f568efd48fc16649a78580e0eb45390a0b7a6a3871b6"
 dependencies = [
  "base64",
  "serde_json",
@@ -4840,13 +4781,13 @@ dependencies = [
 
 [[package]]
 name = "sigstore-trust-root"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bf02c1ab8f7a10db78dbf37cc80bb0f93d2afd636d5c37a572c815cb418b925"
+checksum = "54fdf65b1207f96d4b1e5b44028fe3e078d40a50f6316715f6ad97ae21b0bfeb"
 dependencies = [
  "base64",
- "chrono",
  "hex",
+ "jiff",
  "rustls-pki-types",
  "serde",
  "serde_json",
@@ -4858,22 +4799,22 @@ dependencies = [
 
 [[package]]
 name = "sigstore-tsa"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31ea02ad335b7386c9a72455aecd2be964bef1d7118199858ee4c6d679af48ed"
+checksum = "860eb6a645e0a22fa316031b06e9e87f9310c21915743bfa83901472dd3e7146"
 dependencies = [
  "aws-lc-rs",
  "base64",
- "chrono",
  "cmpv2",
  "cms",
  "const-oid",
  "der",
  "hex",
+ "jiff",
  "rand 0.9.4",
  "reqwest",
  "rustls-pki-types",
- "rustls-webpki 0.102.8",
+ "rustls-webpki",
  "sigstore-crypto",
  "sigstore-types",
  "thiserror",
@@ -4884,12 +4825,11 @@ dependencies = [
 
 [[package]]
 name = "sigstore-types"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce83bc56c60bbfb197a054d541839ff248c7e1aabf7016f704f8f3e6552fd13c"
+checksum = "7fb0334b69834c1f29757e57ade7e9bdbc42f5383cc22d003256d4d2df47af13"
 dependencies = [
  "base64",
- "chrono",
  "hex",
  "pem",
  "serde",
@@ -6449,7 +6389,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs",
  "rustls-pki-types",
- "rustls-webpki 0.103.13",
+ "rustls-webpki",
  "serde",
  "serde_json",
  "temp-env",
