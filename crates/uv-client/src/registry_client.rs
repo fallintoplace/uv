@@ -544,8 +544,15 @@ impl RegistryClient {
         let result = if matches!(index, IndexUrl::Path(_)) {
             self.fetch_local_simple_detail(package_name, &url).await
         } else {
-            self.fetch_remote_simple_detail(package_name, &url, index, &cache_entry, cache_control)
-                .await
+            self.fetch_remote_simple_detail(
+                package_name,
+                &url,
+                index,
+                capabilities,
+                &cache_entry,
+                cache_control,
+            )
+            .await
         };
 
         match result {
@@ -558,6 +565,11 @@ impl RegistryClient {
                     };
                     let decision =
                         status_code_strategy.handle_status_code(status_code, index, capabilities);
+                    if status_code == StatusCode::FORBIDDEN
+                        && matches!(decision, IndexStatusCodeDecision::Fail(_))
+                    {
+                        capabilities.set_simple_api_forbidden(index.clone(), package_name.clone());
+                    }
                     if let IndexStatusCodeDecision::Fail(status_code) = decision {
                         if !matches!(
                             status_code,
@@ -586,6 +598,7 @@ impl RegistryClient {
         package_name: &PackageName,
         url: &DisplaySafeUrl,
         index: &IndexUrl,
+        capabilities: &IndexCapabilities,
         cache_entry: &CacheEntry,
         cache_control: CacheControl,
     ) -> Result<OwnedArchive<SimpleDetailMetadata>, Error> {
@@ -609,6 +622,7 @@ impl RegistryClient {
             .build()
             .map_err(|err| ErrorKind::from_reqwest(url.clone(), err))?;
         let parse_simple_response = |response: Response| {
+            capabilities.set_simple_api_success(index.clone(), package_name.clone());
             async {
                 // Use the response URL, rather than the request URL, as the base for relative URLs.
                 // This ensures that we handle redirects and other URL transformations correctly.

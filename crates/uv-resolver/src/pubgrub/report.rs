@@ -11,8 +11,8 @@ use rustc_hash::FxHashMap;
 
 use uv_configuration::{IndexStrategy, NoBinary, NoBuild};
 use uv_distribution_types::{
-    IncompatibleDist, IncompatibleSource, IncompatibleWheel, Index, IndexCapabilities,
-    IndexLocations, IndexMetadata, IndexUrl, RequiresPython,
+    ForbiddenIndexAccess, IncompatibleDist, IncompatibleSource, IncompatibleWheel, Index,
+    IndexCapabilities, IndexLocations, IndexMetadata, IndexUrl, RequiresPython,
 };
 use uv_normalize::PackageName;
 use uv_pep440::{Version, VersionSpecifier, VersionSpecifiers};
@@ -1119,9 +1119,10 @@ impl PubGrubReportFormatter<'_> {
                     index: index.url.clone(),
                 });
             }
-            if index_capabilities.forbidden(&index.url) {
+            if let Some(access) = index_capabilities.forbidden_access(&index.url) {
                 hints.insert(PubGrubHint::ForbiddenIndex {
                     index: index.url.clone(),
+                    access,
                 });
             }
         }
@@ -1360,7 +1361,10 @@ pub enum PubGrubHint {
     /// An index returned an Unauthorized (401) response.
     UnauthorizedIndex { index: IndexUrl },
     /// An index returned a Forbidden (403) response.
-    ForbiddenIndex { index: IndexUrl },
+    ForbiddenIndex {
+        index: IndexUrl,
+        access: ForbiddenIndexAccess,
+    },
     /// None of the available wheels for a package have a compatible Python language tag (e.g.,
     /// `cp310` in `cp310-abi3-manylinux_2_17_x86_64.whl`).
     LanguageTags {
@@ -1550,7 +1554,7 @@ impl From<PubGrubHint> for PubGrubHintCore {
             }
             PubGrubHint::UncheckedIndex { name: package, .. } => Self::UncheckedIndex { package },
             PubGrubHint::UnauthorizedIndex { index } => Self::UnauthorizedIndex { index },
-            PubGrubHint::ForbiddenIndex { index } => Self::ForbiddenIndex { index },
+            PubGrubHint::ForbiddenIndex { index, .. } => Self::ForbiddenIndex { index },
             PubGrubHint::NoBuild { package, .. } => Self::NoBuild { package },
             PubGrubHint::NoBinary { package, .. } => Self::NoBinary { package },
             PubGrubHint::LanguageTags { package, .. } => Self::LanguageTags { package },
@@ -1813,14 +1817,32 @@ impl std::fmt::Display for PubGrubHint {
                     "401 Unauthorized".red(),
                 )
             }
-            Self::ForbiddenIndex { index } => {
-                write!(
-                    f,
-                    "An index URL ({}) returned a {} error. This could indicate lack of valid authentication credentials, or the package may not exist on this index.",
-                    index.without_credentials().cyan(),
-                    "403 Forbidden".red(),
-                )
-            }
+            Self::ForbiddenIndex { index, access } => match access {
+                ForbiddenIndexAccess::Unverified => {
+                    write!(
+                        f,
+                        "An index URL ({}) returned a {} error. Check that the index URL is correct and the credentials are valid.",
+                        index.without_credentials().cyan(),
+                        "403 Forbidden".red(),
+                    )
+                }
+                ForbiddenIndexAccess::SamePackage => {
+                    write!(
+                        f,
+                        "An index URL ({}) returned a {} error after uv received a successful response for the same package from the index.",
+                        index.without_credentials().cyan(),
+                        "403 Forbidden".red(),
+                    )
+                }
+                ForbiddenIndexAccess::OtherPackage => {
+                    write!(
+                        f,
+                        "An index URL ({}) returned a {} error, but uv received a successful response for another package from the index. If the failing package is not present on this index, consider adding `ignore-error-codes = [403]` to the index's `[[tool.uv.index]]` entry to continue searching across indexes.",
+                        index.without_credentials().cyan(),
+                        "403 Forbidden".red(),
+                    )
+                }
+            },
             Self::NoBuild { package, option } => {
                 let option = match option {
                     NoBuild::All => "for all packages (i.e., with `--no-build`)".to_string(),

@@ -11,6 +11,7 @@ use thiserror::Error;
 use url::{ParseError, Url};
 use uv_auth::RealmRef;
 use uv_cache_key::CanonicalUrl;
+use uv_normalize::PackageName;
 use uv_pep508::{Scheme, VerbatimUrl, VerbatimUrlError, split_scheme};
 use uv_redacted::DisplaySafeUrl;
 use uv_warnings::warn_user;
@@ -624,7 +625,7 @@ impl<'a> IndexUrls {
 }
 
 bitflags::bitflags! {
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, Default)]
     struct Flags: u8 {
         /// Whether the index supports range requests.
         const NO_RANGE_REQUESTS = 1;
@@ -635,13 +636,29 @@ bitflags::bitflags! {
     }
 }
 
+#[derive(Debug, Default)]
+struct Capabilities {
+    flags: Flags,
+    /// Packages with a successful Simple API response from this index in this invocation.
+    successful_simple_api: FxHashSet<PackageName>,
+    /// Packages with a forbidden Simple API response from this index in this invocation.
+    forbidden_simple_api: FxHashSet<PackageName>,
+}
+
+/// Successful Simple API responses seen before an index returned a `403 Forbidden` response.
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+pub enum ForbiddenIndexAccess {
+    /// No successful Simple API responses were seen for the index.
+    Unverified,
+    /// A successful Simple API response was seen for the same package.
+    SamePackage,
+    /// A successful Simple API response was seen for another package.
+    OtherPackage,
+}
+
 /// A map of [`IndexUrl`]s to their capabilities.
-///
-/// We only store indexes that lack capabilities (i.e., don't support range requests, aren't
-/// authorized). The benefit is that the map is almost always empty, so validating capabilities is
-/// extremely cheap.
 #[derive(Debug, Default, Clone)]
-pub struct IndexCapabilities(Arc<RwLock<FxHashMap<IndexUrl, Flags>>>);
+pub struct IndexCapabilities(Arc<RwLock<FxHashMap<IndexUrl, Capabilities>>>);
 
 impl IndexCapabilities {
     /// Returns `true` if the given [`IndexUrl`] supports range requests.
@@ -651,7 +668,7 @@ impl IndexCapabilities {
             .read()
             .unwrap()
             .get(index_url)
-            .is_some_and(|flags| flags.intersects(Flags::NO_RANGE_REQUESTS))
+            .is_some_and(|capabilities| capabilities.flags.intersects(Flags::NO_RANGE_REQUESTS))
     }
 
     /// Mark an [`IndexUrl`] as not supporting range requests.
@@ -660,7 +677,8 @@ impl IndexCapabilities {
             .write()
             .unwrap()
             .entry(index_url)
-            .or_insert(Flags::empty())
+            .or_default()
+            .flags
             .insert(Flags::NO_RANGE_REQUESTS);
     }
 
@@ -670,7 +688,7 @@ impl IndexCapabilities {
             .read()
             .unwrap()
             .get(index_url)
-            .is_some_and(|flags| flags.intersects(Flags::UNAUTHORIZED))
+            .is_some_and(|capabilities| capabilities.flags.intersects(Flags::UNAUTHORIZED))
     }
 
     /// Mark an [`IndexUrl`] as returning a `401 Unauthorized` status code.
@@ -679,7 +697,8 @@ impl IndexCapabilities {
             .write()
             .unwrap()
             .entry(index_url)
-            .or_insert(Flags::empty())
+            .or_default()
+            .flags
             .insert(Flags::UNAUTHORIZED);
     }
 
@@ -689,7 +708,7 @@ impl IndexCapabilities {
             .read()
             .unwrap()
             .get(index_url)
-            .is_some_and(|flags| flags.intersects(Flags::FORBIDDEN))
+            .is_some_and(|capabilities| capabilities.flags.intersects(Flags::FORBIDDEN))
     }
 
     /// Mark an [`IndexUrl`] as returning a `403 Forbidden` status code.
@@ -698,8 +717,50 @@ impl IndexCapabilities {
             .write()
             .unwrap()
             .entry(index_url)
-            .or_insert(Flags::empty())
+            .or_default()
+            .flags
             .insert(Flags::FORBIDDEN);
+    }
+
+    /// Record a successful Simple API response from an [`IndexUrl`] for a package.
+    pub fn set_simple_api_success(&self, index_url: IndexUrl, package_name: PackageName) {
+        self.0
+            .write()
+            .unwrap()
+            .entry(index_url)
+            .or_default()
+            .successful_simple_api
+            .insert(package_name);
+    }
+
+    /// Record a `403 Forbidden` Simple API response from an [`IndexUrl`] for a package.
+    pub fn set_simple_api_forbidden(&self, index_url: IndexUrl, package_name: PackageName) {
+        let mut capabilities = self.0.write().unwrap();
+        let capabilities = capabilities.entry(index_url).or_default();
+        capabilities.flags.insert(Flags::FORBIDDEN);
+        capabilities.forbidden_simple_api.insert(package_name);
+    }
+
+    /// Return the prior successful Simple API access for an index that returned `403 Forbidden`.
+    pub fn forbidden_access(&self, index_url: &IndexUrl) -> Option<ForbiddenIndexAccess> {
+        let capabilities = self.0.read().unwrap();
+        let capabilities = capabilities.get(index_url)?;
+        if !capabilities.flags.intersects(Flags::FORBIDDEN) {
+            return None;
+        }
+
+        if capabilities
+            .forbidden_simple_api
+            .iter()
+            .any(|package_name| capabilities.successful_simple_api.contains(package_name))
+        {
+            return Some(ForbiddenIndexAccess::SamePackage);
+        }
+        if capabilities.successful_simple_api.is_empty() {
+            Some(ForbiddenIndexAccess::Unverified)
+        } else {
+            Some(ForbiddenIndexAccess::OtherPackage)
+        }
     }
 }
 
@@ -740,6 +801,34 @@ mod tests {
         assert!(is_disambiguated_path(
             "git+https://github.com/example/repo.git"
         ));
+    }
+
+    #[test]
+    fn forbidden_access_tracks_simple_api_successes() {
+        let index_url = IndexUrl::from_str("https://registry.com/simple/").unwrap();
+
+        let capabilities = IndexCapabilities::default();
+        capabilities.set_forbidden(index_url.clone());
+        assert_eq!(
+            capabilities.forbidden_access(&index_url),
+            Some(ForbiddenIndexAccess::Unverified)
+        );
+        capabilities
+            .set_simple_api_success(index_url.clone(), PackageName::from_str("anyio").unwrap());
+        assert_eq!(
+            capabilities.forbidden_access(&index_url),
+            Some(ForbiddenIndexAccess::OtherPackage)
+        );
+
+        let capabilities = IndexCapabilities::default();
+        capabilities
+            .set_simple_api_success(index_url.clone(), PackageName::from_str("anyio").unwrap());
+        capabilities
+            .set_simple_api_forbidden(index_url.clone(), PackageName::from_str("anyio").unwrap());
+        assert_eq!(
+            capabilities.forbidden_access(&index_url),
+            Some(ForbiddenIndexAccess::SamePackage)
+        );
     }
 
     #[test]
